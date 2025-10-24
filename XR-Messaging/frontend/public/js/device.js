@@ -170,11 +170,28 @@ export class WebRtcStreamer {
   /** Desktop answered our offer. */
   async onRemoteAnswerReceived(answer, fromId) {
     const pc = this._pcs.get(fromId);
-    if (!pc) return;
+    if (!pc) {
+      console.warn(`[XR-Device] No peer connection for ${fromId}, ignoring answer`);
+      return;
+    }
+
+    // Guard against setting answer when not in correct state
+    if (pc.signalingState === 'stable') {
+      console.warn(`[XR-Device] Peer connection already stable for ${fromId}, ignoring duplicate answer`);
+      return;
+    }
+
+    if (pc.signalingState !== 'have-local-offer') {
+      console.warn(`[XR-Device] Unexpected state ${pc.signalingState} for answer from ${fromId}, expected have-local-offer`);
+      return;
+    }
+
     try {
+      console.log(`[XR-Device] Setting remote answer for ${fromId} (state: ${pc.signalingState})`);
       await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: answer.sdp }));
+      console.log(`[XR-Device] Remote answer set successfully for ${fromId} (new state: ${pc.signalingState})`);
     } catch (e) {
-      console.error(`setRemoteDescription(answer) failed for ${fromId}`, e);
+      console.error(`[XR-Device] setRemoteDescription(answer) failed for ${fromId}:`, e.message);
     }
   }
 
@@ -306,16 +323,18 @@ export class WebRtcStreamer {
     pc = new RTCPeerConnection({ iceServers: this._iceServers /* unified plan is default */ });
 
     // Logging parity (PeerConnectionObserver)
+    pc.onsignalingstatechange = () =>
+      console.log(`[XR-Device] ${targetId} signalingState=${pc.signalingState}`);
     pc.onicegatheringstatechange = () =>
-      console.debug(`[${targetId}] iceGatheringState=${pc.iceGatheringState}`);
+      console.log(`[XR-Device] ${targetId} iceGatheringState=${pc.iceGatheringState}`);
     pc.oniceconnectionstatechange = () =>
-      console.debug(`[${targetId}] iceConnectionState=${pc.iceConnectionState}`);
+      console.log(`[XR-Device] ${targetId} iceConnectionState=${pc.iceConnectionState}`);
     pc.onconnectionstatechange = () => {
-      console.debug(`[${targetId}] connectionState=${pc.connectionState}`);
+      console.log(`[XR-Device] ${targetId} connectionState=${pc.connectionState}`);
       if (pc.connectionState === 'connected') {
         // Start sampling once when the first connection is active
         if (!this._qualityTimer) this._startQualitySampling(pc);
-        this._requestKeyFrame(pc);          // <— ADD THIS LINE
+        this._requestKeyFrame(pc);
       } else if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
         if (!this._anyPcConnected()) this._stopQualitySampling();
       }
@@ -391,13 +410,29 @@ export class WebRtcStreamer {
 
   async _createAndSendOffer(targetId) {
     const pc = this._pcs.get(targetId);
-    if (!pc) return;
+    if (!pc) {
+      console.warn(`[XR-Device] No peer connection for ${targetId}, cannot create offer`);
+      return;
+    }
+
+    // Handle glare: if we're in the wrong state, roll back first
+    if (pc.signalingState !== 'stable' && pc.signalingState !== 'have-local-offer') {
+      console.log(`[XR-Device] Rolling back from state ${pc.signalingState} before creating new offer`);
+      try {
+        await pc.setLocalDescription({ type: 'rollback' });
+      } catch (e) {
+        console.warn(`[XR-Device] Rollback failed for ${targetId}:`, e.message);
+      }
+    }
+
     try {
+      console.log(`[XR-Device] Creating offer for ${targetId} (state: ${pc.signalingState})`);
       const offer = await pc.createOffer({});
       await pc.setLocalDescription(offer);
+      console.log(`[XR-Device] Local offer set for ${targetId} (new state: ${pc.signalingState})`);
       this.signaling.sendOffer({ type: 'offer', sdp: offer.sdp }, this.ANDROID_XR_ID, targetId);
     } catch (e) {
-      console.error(`create/send offer failed for ${targetId}`, e);
+      console.error(`[XR-Device] create/send offer failed for ${targetId}:`, e.message);
     }
   }
 
