@@ -328,6 +328,8 @@ function createSignaling() {
                 if (id === DEFAULT_DESKTOP_ID) {
                     msg('System', `Desktop [${DEFAULT_DESKTOP_ID}] left the room (${payload?.roomId || ''}).`);
                     connectedDesktops = connectedDesktops.filter(x => x.toUpperCase() !== DEFAULT_DESKTOP_ID);
+                    persistedState.connectedDesktops = connectedDesktops.slice();
+                    saveState();
                     if (streamActive) {
                         streamActive = false;
                         streamer?.stopStreaming().catch(() => { });
@@ -342,6 +344,8 @@ function createSignaling() {
                 const id = (payload?.xrId || DEFAULT_DESKTOP_ID).toUpperCase();
                 msg('System', `Desktop [${id}] disconnected.`);
                 connectedDesktops = connectedDesktops.filter(x => x.toUpperCase() !== id);
+                persistedState.connectedDesktops = connectedDesktops.slice();
+                saveState();
                 if (streamActive) {
                     streamActive = false;
                     streamer?.stopStreaming().catch(() => { });

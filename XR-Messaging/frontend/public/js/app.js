@@ -1206,6 +1206,8 @@ function updateDeviceList(devices) {
     }
 
     console.log('[DEVICES] Updating device list with', devices.length, 'devices');
+
+    // ✅ ALWAYS clear the list first to ensure stale entries are removed
     deviceListElement.innerHTML = '';
 
     const myId = XR_ID;
@@ -1213,6 +1215,7 @@ function updateDeviceList(devices) {
 
     let peerOnline = false;
     let sameIdCount = 0;
+    let devicesAdded = 0;
 
     devices.forEach((device) => {
         const isSelfId = device.xrId === myId;
@@ -1230,11 +1233,15 @@ function updateDeviceList(devices) {
         const li = document.createElement('li');
         li.textContent = `${name} (${device.xrId})`;
         deviceListElement.appendChild(li);
+        devicesAdded++;
 
         if (device.xrId === peerId) {
             peerOnline = true;
         }
     });
+
+    // ✅ Log final count for debugging
+    console.log(`[DEVICES] Final list: ${devicesAdded} device(s) displayed from ${devices.length} total`);
 
     // Duplicate-tab notice if same XR ID is observed more than once
     if (sameIdCount > 1 && !duplicateNotified) {
